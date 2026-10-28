@@ -51,6 +51,27 @@ You ──prompt──▶ Copilot Agent Mode
 - Use a **public** repository so Actions minutes are free.
 - If the issue doesn't appear in 20 seconds, check the **Actions** tab for a running or failed job.
 
+## CLI Usage
+
+The CLI stores observations in the `weather_logs` table in `weather.db`. Add a city to fetch its current weather, list recent observations, or view temperature statistics:
+
+```bash
+node src/cli.js add "London"
+node src/cli.js list
+node src/cli.js list --limit 5
+node src/cli.js stats "London"
+```
+
+Equivalent npm scripts are available:
+
+```bash
+npm run add -- "London"
+npm run list -- --limit 5
+npm run stats -- "London"
+```
+
+The database path defaults to `weather.db` in the repository root. Set `WEATHER_DB_PATH` to use a different SQLite file.
+
 ---
 
 © 2026 • [MIT License](LICENSE)
