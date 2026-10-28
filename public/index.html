@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mona's Weather Tracker</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root { color-scheme: light; font-family: Inter, system-ui, sans-serif; }
+    body { margin: 0; background: #f4f7fb; color: #172033; }
+    main { max-width: 1100px; margin: 0 auto; padding: 2rem 1rem 4rem; }
+    h1 { margin-bottom: 1rem; }
+    form { display: flex; gap: .75rem; margin-bottom: 1.5rem; }
+    input, button { font: inherit; padding: .75rem 1rem; border-radius: .5rem; }
+    input { flex: 1; border: 1px solid #ccd4e0; }
+    button { border: 0; background: #3567e8; color: white; cursor: pointer; font-weight: 700; }
+    button:disabled { opacity: .65; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; }
+    .card, .panel { background: white; border-radius: .75rem; box-shadow: 0 2px 12px #17203312; }
+    .card { padding: 1rem; }
+    .card strong { display: block; font-size: 1.7rem; margin-top: .35rem; }
+    .panel { margin-top: 1.25rem; padding: 1rem; overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { text-align: left; padding: .65rem; border-bottom: 1px solid #edf0f5; }
+    th { color: #63708a; font-size: .85rem; }
+    #message { min-height: 1.25rem; color: #b42318; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Weather Tracker</h1>
+    <form id="refresh-form">
+      <input id="city" name="city" required placeholder="Enter a city" aria-label="City">
+      <button id="refresh-button" type="submit">Add / Refresh</button>
+    </form>
+    <div id="message" role="status"></div>
+    <section id="summary" class="cards" aria-label="City summaries"></section>
+    <section class="panel">
+      <h2>Recent logs</h2>
+      <table>
+        <thead><tr><th>City</th><th>Temperature</th><th>Humidity</th><th>Wind</th><th>Condition</th><th>Recorded</th></tr></thead>
+        <tbody id="logs"></tbody>
+      </table>
+    </section>
+    <section class="panel">
+      <h2>Temperature history</h2>
+      <canvas id="temperature-chart"></canvas>
+    </section>
+  </main>
+  <script>
+    const form = document.querySelector("#refresh-form");
+    const cityInput = document.querySelector("#city");
+    const button = document.querySelector("#refresh-button");
+    const message = document.querySelector("#message");
+    let chart;
+
+    // Request dashboard data and update all weather views.
+    async function refreshDashboard() {
+      const [logsResponse, summaryResponse] = await Promise.all([
+        fetch("/api/logs"), fetch("/api/summary")
+      ]);
+      const logs = await logsResponse.json();
+      const summary = await summaryResponse.json();
+      renderSummary(summary);
+      renderLogs(logs);
+      renderChart(logs);
+    }
+
+    // Render one summary card for each city.
+    function renderSummary(cities) {
+      document.querySelector("#summary").innerHTML = cities.map((city) => `
+        <article class="card">
+          <span>${escapeHtml(city.city)}</span>
+          <strong>${formatTemperature(city.latest_temperature)}</strong>
+          <small>Average ${formatTemperature(city.average_temperature)} · ${city.log_count} logs</small>
+        </article>`).join("");
+    }
+
+    // Render observations in a recent-weather table.
+    function renderLogs(logs) {
+      document.querySelector("#logs").innerHTML = logs.map((log) => `
+        <tr>
+          <td>${escapeHtml(log.city)}${log.country ? `, ${escapeHtml(log.country)}` : ""}</td>
+          <td>${formatTemperature(log.temperature_c)}</td>
+          <td>${log.humidity ?? "N/A"}${log.humidity == null ? "" : "%"}</td>
+          <td>${log.wind_kmh ?? "N/A"}${log.wind_kmh == null ? "" : " km/h"}</td>
+          <td>${escapeHtml(log.condition ?? "Unknown")}</td>
+          <td>${escapeHtml(log.created_at)}</td>
+        </tr>`).join("");
+    }
+
+    // Draw the newest observations from oldest to newest.
+    function renderChart(logs) {
+      const points = [...logs].reverse().filter((log) => log.temperature_c != null);
+      const context = document.querySelector("#temperature-chart");
+      if (chart) chart.destroy();
+      chart = new Chart(context, {
+        type: "line",
+        data: {
+          labels: points.map((log) => `${log.city} · ${log.created_at}`),
+          datasets: [{ label: "Temperature (°C)", data: points.map((log) => log.temperature_c), borderColor: "#3567e8", backgroundColor: "#3567e833", fill: true, tension: .25 }]
+        },
+        options: { responsive: true, scales: { y: { ticks: { callback: (value) => `${value} °C` } } } }
+      });
+    }
+
+    // Format temperature values consistently.
+    function formatTemperature(value) {
+      return value == null ? "N/A" : `${Number(value).toFixed(1)} °C`;
+    }
+
+    // Keep API text from being interpreted as HTML.
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;" })[character]);
+    }
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      button.disabled = true;
+      message.textContent = "";
+      try {
+        const response = await fetch(`/api/refresh?city=${encodeURIComponent(cityInput.value.trim())}`, { method: "POST" });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error);
+        cityInput.value = "";
+        await refreshDashboard();
+      } catch (error) {
+        message.textContent = error.message || "Could not refresh weather.";
+      } finally {
+        button.disabled = false;
+      }
+    });
+
+    refreshDashboard().catch(() => { message.textContent = "Could not load the weather dashboard."; });
+  </script>
+</body>
+</html>

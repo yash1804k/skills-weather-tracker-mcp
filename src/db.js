@@ -33,6 +33,25 @@ const selectCityStats = database.prepare(`
   WHERE city = ? COLLATE NOCASE
 `);
 
+const selectWeatherSummary = database.prepare(`
+  SELECT grouped.city,
+         (
+           SELECT latest.temperature_c
+           FROM weather_logs AS latest
+           WHERE latest.city = grouped.city COLLATE NOCASE
+           ORDER BY latest.created_at DESC, latest.id DESC
+           LIMIT 1
+         ) AS latest_temperature,
+         grouped.average_temperature,
+         grouped.log_count
+  FROM (
+    SELECT city, AVG(temperature_c) AS average_temperature, COUNT(*) AS log_count
+    FROM weather_logs
+    GROUP BY city COLLATE NOCASE
+  ) AS grouped
+  ORDER BY grouped.city COLLATE NOCASE
+`);
+
 // Ensure the CLI is connected to the database prepared by the MCP exercise.
 function requireWeatherLogsTable() {
   const table = database.prepare(
@@ -60,4 +79,10 @@ export function listWeatherLogs(limit) {
 export function getCityStats(city) {
   requireWeatherLogsTable();
   return selectCityStats.get(city);
+}
+
+// Summarize temperatures and counts for every logged city.
+export function getWeatherSummary() {
+  requireWeatherLogsTable();
+  return selectWeatherSummary.all();
 }
